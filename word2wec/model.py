@@ -1,6 +1,6 @@
+import pytorch_lightning as pl
 import torch
 from torch import nn
-import pytorch_lightning as pl
 
 
 class Word2Vec(pl.LightningModule):
@@ -29,22 +29,17 @@ class Word2VecRunner(pl.LightningModule):
         self.save_hyperparameters()
         self.model = Word2Vec(vocab_size=vocab_size, embedding_dim=embedding_dim, mode=mode)
 
-    def training_step(self, batch, batch_idx):
-
+    def _step(self, batch, batch_idx):
         # stack target + negatives
         out = torch.cat([batch["target"].unsqueeze(1), batch["negatives"]], dim=1)  # [B, 1+N]
 
         in_emb, out_emb = self.model(batch["input"], out)
         # unstack
-        pos_emb = out_emb[:, 0, :] # [B, D]
-        neg_emb = out_emb[:, 1:, :] # [B, N, D]
+        pos_emb = out_emb[:, 0, :]  # [B, D]
+        neg_emb = out_emb[:, 1:, :]  # [B, N, D]
 
         pos_score = torch.sum(in_emb * pos_emb, dim=1)  # [B]
         neg_score = torch.bmm(neg_emb, in_emb.unsqueeze(2)).squeeze(2)  # [B, N]
-
-        # Dot product with negative sampling loss
-        loss = -torch.log(torch.sigmoid(pos_score)) - torch.sum(torch.log(torch.sigmoid(-neg_score)), dim=1)
-        loss = loss.mean()
 
         # Cos sim with negative sampling
         # pos_score = torch.cosine_similarity(in_emb, pos_emb, dim=1)
@@ -53,7 +48,21 @@ class Word2VecRunner(pl.LightningModule):
         #     torch.nn.functional.normalize(in_emb.unsqueeze(2), dim=1)
         # ).squeeze(2)
 
+        loss = -torch.log(torch.sigmoid(pos_score)) - torch.sum(torch.log(torch.sigmoid(-neg_score)), dim=1)
+        loss = loss.mean()
+
+        return loss
+
+    def training_step(self, batch, batch_idx):
+        loss = self._step(batch, batch_idx)
+
         self.log("train_loss", loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        loss = self._step(batch, batch_idx)
+
+        self.log("val_loss", loss, prog_bar=True)
         return loss
 
     def configure_optimizers(self):
