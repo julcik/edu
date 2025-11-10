@@ -2,7 +2,7 @@ import json
 
 import torch
 
-from word2wec.model import Word2Vec
+from word2vec.model import Word2Vec
 
 examples = [
     ("king", "man", "woman"),

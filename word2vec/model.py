@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from word2wec.metric import AnalogyMetric
+from word2vec.metric import AnalogyMetric
 
 
 class Word2Vec(pl.LightningModule):
