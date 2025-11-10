@@ -5,10 +5,14 @@ from collections import Counter
 import pytorch_lightning as pl
 import torch
 from torch.utils.data import Dataset, DataLoader
+import nltk
 
+#nltk.download('stopwords')
+stop_words = set(nltk.corpus.stopwords.words("english"))
 
 def basic_tokenize(line):
-    return re.findall(r"\b\w+\b", line.lower())
+    # return re.findall(r"\b\w+\b", line.lower())
+    return re.findall(r"\b[a-z]{2,}\b", line.lower()) # get rid of numbers and one letter words
 
 
 class Word2VecDataset(Dataset):
@@ -21,13 +25,14 @@ class Word2VecDataset(Dataset):
         if isinstance(text[0], str):
             tokens = []
             for line in text:
-                tokens.extend(basic_tokenize(line))
+                tokens.extend([tok for tok in basic_tokenize(line) if tok not in stop_words])
         else:
             # already tokens
+            print("HERE!!")
             tokens = [tok for sent in text for tok in sent]
 
         #reduce amount of frequent words
-        tokens = self.subsample_tokens(tokens)
+        tokens = self.subsample_tokens(tokens, threshold=1e-3)
 
         if word2idx is None:
             word_freq = Counter(tokens)
@@ -95,6 +100,7 @@ class Word2VecDataset(Dataset):
         # compute keep probabilities
         keep_probs = {w: min(1.0, math.sqrt(threshold / f) + threshold / f) for w, f in freqs.items()}
         subsampled = [w for w in tokens if random.random() < keep_probs[w]]
+
         return subsampled
 
     @staticmethod
@@ -183,3 +189,34 @@ class Word2VecDataModule(pl.LightningDataModule):
             num_workers=self.hparams.num_workers,
             persistent_workers=True
         )
+
+def debug():
+    from datasets import load_dataset
+    dataset = load_dataset("wikitext", "wikitext-2-raw-v1")
+    train_text = dataset["train"]["text"]
+    data_module = Word2VecDataModule(
+        raw_text=train_text,
+        batch_size=16,
+        window_size=2,
+        mode="skipgram",
+        num_negative=10,
+        min_count=5
+    )
+    batch = next(iter(data_module.train_dataloader()))
+
+    batch_size = batch["input"].size(0)
+
+    idx2word = data_module.idx2word
+
+    for i in range(batch_size):
+        inpt = idx2word[batch["input"][i].item()]
+        target = idx2word[batch["target"][i].item()]
+        negatives = [idx2word[neg.item()] for neg in batch["negatives"][i]]
+
+        print(f"{inpt=}, {target=}, {negatives=}")
+
+
+
+
+if __name__ == "__main__":
+    debug()

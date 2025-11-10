@@ -3,12 +3,15 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from word2wec.metric import AnalogyMetric
+
+
 class Word2Vec(pl.LightningModule):
     def __init__(self, vocab_size, embedding_dim=50, mode="skipgram"):
         super().__init__()
         self.mode = mode
-        self.in_embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=0, max_norm=1)
-        self.out_embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=0, max_norm=1)
+        self.in_embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)#, max_norm=1)
+        self.out_embed = nn.Embedding(vocab_size, embedding_dim, padding_idx=0)#, max_norm=1)
 
     def forward(self, x, out):
         if self.mode == "skipgram":
@@ -24,10 +27,11 @@ class Word2Vec(pl.LightningModule):
 
 
 class Word2VecRunner(pl.LightningModule):
-    def __init__(self, vocab_size, embedding_dim=50, mode="skipgram", lr=0.01, n_steps=10000):
+    def __init__(self, vocab_size, word2idx, idx2word, examples, embedding_dim=50, mode="skipgram", lr=0.01, n_steps=10000):
         super().__init__()
-        self.save_hyperparameters()
+        self.save_hyperparameters(ignore=["word2idx", "idx2word", "examples"])
         self.model = Word2Vec(vocab_size=vocab_size, embedding_dim=embedding_dim, mode=mode)
+        self.analogy_metric = AnalogyMetric(word2idx, idx2word, examples)
 
     def _step(self, batch, batch_idx):
         # stack target + negatives
@@ -62,9 +66,25 @@ class Word2VecRunner(pl.LightningModule):
         self.log("val_loss", loss, prog_bar=True)
         return loss
 
+    def on_validation_epoch_end(self):
+        if self.hparams.mode == "skipgram":
+            embeddings = self.model.in_embed.weight.detach().cpu()
+        else:
+            embeddings = self.model.out_embed.weight.detach().cpu()
+        self.analogy_metric.update(embeddings)
+        metrics = self.analogy_metric.compute()
+        self.log_dict(metrics, prog_bar=True)
+        self.analogy_metric.reset()
+
     def configure_optimizers(self):
-        optim = torch.optim.AdamW(self.parameters(), lr=self.hparams.lr, weight_decay=1e-5)
-        sched = torch.optim.lr_scheduler.CosineAnnealingLR(optim, T_max=self.hparams.n_steps)
+        optim = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        sched = torch.optim.lr_scheduler.OneCycleLR(
+            optim,
+            max_lr=self.hparams.lr,
+            total_steps=self.hparams.n_steps,
+            pct_start=0.05,
+            final_div_factor=1e2
+        )
         return {
             "optimizer": optim,
             "lr_scheduler": {
