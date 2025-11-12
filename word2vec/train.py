@@ -74,5 +74,5 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
 
 
 if __name__ == "__main__":
-    train(mode="skipgram")
+    train(mode="skipgram", n_epoch=5)
     # train(mode="cbow", n_epoch=200)
