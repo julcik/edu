@@ -4,9 +4,9 @@ import torch
 from datasets import load_dataset
 from pytorch_lightning.callbacks import LearningRateMonitor
 from pytorch_lightning.loggers import WandbLogger
-from word2vec.data import Word2VecDataModule
-from word2vec.model import Word2VecRunner
-from word2vec.test import examples
+from data import Word2VecDataModule
+from model import Word2VecRunner
+from test import examples
 
 analogy_examples = [
     ("king", "man", "woman", "queen"),
@@ -28,11 +28,12 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
     train_text = dataset["train"]["text"]
     data_module = Word2VecDataModule(
         raw_text=train_text,
-        batch_size=512,
+        batch_size=64,
         window_size=5,
         mode=mode,
         num_negative=10,
-        min_count=5
+        min_count=5,
+        chunk_size=50
     )
     print("Vocab size:", data_module.vocab_size)
 
@@ -74,5 +75,6 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
 
 
 if __name__ == "__main__":
-    train(mode="skipgram", n_epoch=5)
+
+    train(mode="skipgram", n_epoch=3)
     # train(mode="cbow", n_epoch=200)

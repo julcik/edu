@@ -23,7 +23,7 @@ def basic_tokenize(line):
 class Word2VecDataset(Dataset):
     def __init__(self, text, word2idx=None, window_size=2, num_negative=5, min_count=5,
                  pad_token="<PAD>", mode="skipgram", subsample_t=1e-3,
-                 cache_dir="./dataset_cache", chunk_size=1000, max_cache_chunks=10):
+                 cache_dir="./dataset_cache", chunk_size=1000, max_cache_chunks=3):
 
         self.mode = mode
         self.window_size = window_size
@@ -33,13 +33,8 @@ class Word2VecDataset(Dataset):
         self.max_cache_chunks = max_cache_chunks
 
         # Create cache directory
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(exist_ok=True, parents=True)
-
-        # Create unique cache identifier based on parameters
-        cache_id = self._generate_cache_id(text, window_size, mode, num_negative, min_count, subsample_t)
-        self.chunk_dir = self.cache_dir / cache_id
-        self.chunk_dir.mkdir(exist_ok=True)
+        self.chunk_dir = Path(cache_dir)
+        self.chunk_dir.mkdir(exist_ok=True, parents=True)
 
         # In-memory chunk cache (LRU-style)
         self.chunk_cache = OrderedDict()  # chunk_id -> chunk_data
@@ -89,14 +84,6 @@ class Word2VecDataset(Dataset):
         self.total_samples = self._load_or_create_chunks(text)
         print(f"Total samples: {self.total_samples}")
 
-    def _generate_cache_id(self, text, window_size, mode, num_negative, min_count, subsample_t):
-        """Generate unique cache identifier based on dataset parameters"""
-        # Create hash of first/last few lines + parameters to identify dataset
-        sample_text = str(text[:5]) + str(text[-5:]) if len(text) > 10 else str(text)
-        params_str = f"{window_size}_{mode}_{num_negative}_{min_count}_{subsample_t}"
-        combined = sample_text + params_str
-        return hashlib.md5(combined.encode()).hexdigest()[:16]
-
     def _load_or_create_chunks(self, raw_text):
         """Load existing chunks or create new ones"""
         meta_file = self.chunk_dir / "meta.pkl"
@@ -119,7 +106,7 @@ class Word2VecDataset(Dataset):
         chunk_id = 0
 
         for line_idx, line in enumerate(tqdm(raw_text, desc="Processing lines")):
-            line_tokens = self._process_line(line, line_idx, count_only=False)
+            line_tokens = self._tokenize_and_subsample(line)
 
             if len(line_tokens) == 0:
                 continue
@@ -191,7 +178,7 @@ class Word2VecDataset(Dataset):
 
     def _save_chunk(self, chunk_id, chunk_samples):
         """Save a chunk to disk"""
-        chunk_file = self.chunk_dir / f"chunk_{chunk_id:06d}.pkl"
+        chunk_file = self.chunk_dir / f"chunk_{chunk_id}.pkl"
         with open(chunk_file, 'wb') as f:
             pickle.dump(chunk_samples, f)
 
@@ -204,7 +191,7 @@ class Word2VecDataset(Dataset):
             return self.chunk_cache[chunk_id]
 
         # Load from disk
-        chunk_file = self.chunk_dir / f"chunk_{chunk_id:06d}.pkl"
+        chunk_file = self.chunk_dir / f"chunk_{chunk_id}.pkl"
         if not chunk_file.exists():
             raise FileNotFoundError(f"Chunk file {chunk_file} not found")
 
@@ -221,8 +208,7 @@ class Word2VecDataset(Dataset):
 
         return chunk_data
 
-    def _process_line(self, line, line_idx, count_only=False):
-        """Process a line and return tokens, with deterministic subsampling"""
+    def _tokenize_and_subsample(self, line):
         if isinstance(line, str):
             tokens = [tok for tok in basic_tokenize(line) if tok not in stop_words]
         else:
@@ -231,16 +217,8 @@ class Word2VecDataset(Dataset):
         valid_tokens = []
         for pos, tok in enumerate(tokens):
             if tok in self.word2idx:
-                # Use hash for deterministic subsampling
-                seed_str = f"{line_idx}_{pos}_{tok}"
-                hash_val = int(hashlib.md5(seed_str.encode()).hexdigest()[:8], 16)
-                pseudo_random = (hash_val % 10000) / 10000.0
-
-                if pseudo_random < self.keep_prob.get(tok, 1.0):
-                    if count_only:
-                        valid_tokens.append(tok)
-                    else:
-                        valid_tokens.append(self.word2idx[tok])
+                if random.random() < self.keep_prob.get(tok, 1.0):
+                    valid_tokens.append(self.word2idx[tok])
 
         return valid_tokens
 
@@ -254,20 +232,9 @@ class Word2VecDataset(Dataset):
         sample_offset = idx % self.chunk_size
 
         # Load chunk (from cache or disk)
-        try:
-            chunk_data = self._load_chunk(chunk_id)
-        except FileNotFoundError:
-            # Fallback to on-the-fly computation if chunks are missing
-            return self._compute_sample_on_fly(idx)
-
-        if sample_offset >= len(chunk_data):
-            return self._get_fallback_sample(idx)
-
-        # Get pre-computed sample
+        chunk_data = self._load_chunk(chunk_id)
         sample = chunk_data[sample_offset]
 
-        # Add negative samples (computed fresh each time for randomness)
-        torch.manual_seed(idx % (2 ** 31))
         neg_samples = torch.multinomial(self.neg_dist, self.num_negative, replacement=True)
 
         return {
@@ -277,7 +244,7 @@ class Word2VecDataset(Dataset):
         }
 
     def clear_cache(self):
-        """Clear disk cache (for debugging/reset)"""
+        """Clear disk cache"""
         import shutil
         if self.chunk_dir.exists():
             shutil.rmtree(self.chunk_dir)
@@ -310,7 +277,7 @@ def seed_worker(wid):
 class Word2VecDataModule(pl.LightningDataModule):
     def __init__(self, raw_text, batch_size=128, window_size=2, mode="cbow",
                  num_negative=5, min_count=5, num_workers=4, val_split=0.1,
-                 cache_dir="./dataset_cache", chunk_size=1000):
+                 cache_dir="./dataset_cache", chunk_size=100):
         super().__init__()
         self.save_hyperparameters(ignore=["raw_text"])
         self.raw_text = raw_text
@@ -319,7 +286,6 @@ class Word2VecDataModule(pl.LightningDataModule):
         train_text = self.raw_text[:-n_val]
         val_text = self.raw_text[-n_val:]
 
-        # Use separate cache dirs for train/val
         self.train_dataset = Word2VecDataset(
             train_text,
             window_size=self.hparams.window_size,
@@ -393,7 +359,6 @@ def debug():
         num_negative=10,
         min_count=5,
         num_workers=0,
-        chunk_size=100  # Smaller chunks for testing
     )
 
     batch = next(iter(data_module.train_dataloader()))
@@ -409,3 +374,4 @@ def debug():
 
 if __name__ == "__main__":
     debug()
+    # Word2VecDataset("").clear_cache()
