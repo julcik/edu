@@ -28,12 +28,13 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
     train_text = dataset["train"]["text"]
     data_module = Word2VecDataModule(
         raw_text=train_text,
-        batch_size=64,
+        batch_size=4096,
         window_size=5,
         mode=mode,
         num_negative=10,
         min_count=5,
-        chunk_size=50
+        chunk_size=100,
+        num_workers=12,
     )
     print("Vocab size:", data_module.vocab_size)
 
@@ -42,7 +43,7 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
         word2idx=data_module.word2idx,
         idx2word=data_module.idx2word,
         examples=analogy_examples,
-        embedding_dim=128,
+        embedding_dim=320,
         mode=mode,
         n_steps=n_epoch*len(data_module.train_dataloader()),
         lr=lr,
@@ -63,6 +64,7 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
         # gradient_clip_val=1.0,
         callbacks=[LearningRateMonitor(logging_interval='step')],
         accelerator=accelerator,
+        val_check_interval=10000,
         # detect_anomaly=True
         # fast_dev_run=True
     )
@@ -76,5 +78,5 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
 
 if __name__ == "__main__":
 
-    train(mode="skipgram", n_epoch=3)
+    train(mode="skipgram", n_epoch=1)
     # train(mode="cbow", n_epoch=200)

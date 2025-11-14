@@ -12,7 +12,7 @@ import pickle
 import os
 from pathlib import Path
 
-# nltk.download('stopwords')
+nltk.download('stopwords')
 stop_words = set(nltk.corpus.stopwords.words("english"))
 
 
@@ -23,7 +23,7 @@ def basic_tokenize(line):
 class Word2VecDataset(Dataset):
     def __init__(self, text, word2idx=None, window_size=2, num_negative=5, min_count=5,
                  pad_token="<PAD>", mode="skipgram", subsample_t=1e-3,
-                 cache_dir="./dataset_cache", chunk_size=1000, max_cache_chunks=3):
+                 cache_dir="./dataset_cache", chunk_size=100, max_cache_chunks=15000):
 
         self.mode = mode
         self.window_size = window_size
@@ -304,7 +304,7 @@ class Word2VecDataModule(pl.LightningDataModule):
             min_count=self.hparams.min_count,
             word2idx=self.train_dataset.word2idx,
             cache_dir=f"{cache_dir}/val",
-            chunk_size=chunk_size
+            chunk_size=chunk_size,
         )
 
         print(f"Train samples: {len(self.train_dataset)}, Val samples: {len(self.val_dataset)}")
@@ -323,6 +323,7 @@ class Word2VecDataModule(pl.LightningDataModule):
             num_workers=self.hparams.num_workers,
             persistent_workers=self.hparams.num_workers>0,
             worker_init_fn=seed_worker,
+            pin_memory=True
         )
 
     def val_dataloader(self):
@@ -332,8 +333,10 @@ class Word2VecDataModule(pl.LightningDataModule):
             shuffle=False,
             collate_fn=Word2VecDataset.collate_fn,
             num_workers=self.hparams.num_workers,
-            persistent_workers=self.hparams.num_workers>0
-        )
+            persistent_workers=self.hparams.num_workers>0,
+            worker_init_fn=seed_worker,
+            pin_memory=True
+      )
 
     def test_dataloader(self):
         return DataLoader(
