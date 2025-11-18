@@ -1,5 +1,7 @@
-torch==2.9.0
-torchvision==0.24.0
+#pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+#--extra-index-url https://download.pytorch.org/whl/cu118
+#torch
+#torchvision
 lightning==2.5.6
 datasets==4.4.1
 nltk

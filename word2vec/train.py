@@ -9,16 +9,79 @@ from model import Word2VecRunner
 from test import examples
 
 analogy_examples = [
+    # Gender / titles
     ("king", "man", "woman", "queen"),
     ("prince", "man", "woman", "princess"),
+    ("actor", "man", "woman", "actress"),
+    ("waiter", "man", "woman", "waitress"),
+    ("hero", "man", "woman", "heroine"),
+    ("duke", "man", "woman", "duchess"),
+    ("father", "man", "woman", "mother"),
+    ("husband", "man", "woman", "wife"),
+    ("son", "man", "woman", "daughter"),
+    ("brother", "man", "woman", "sister"),
+
+    # Pluralization (plural - singular + other_singular = other_plural)
+    ("cars", "car", "dog", "dogs"),
+    ("cats", "cat", "bird", "birds"),
+    ("children", "child", "mouse", "mice"),
+    ("feet", "foot", "teeth", "tooth"),
+    ("leaves", "leaf", "wolves", "wolf"),
+    ("people", "person", "geese", "goose"),
+    ("books", "book", "pages", "page"),
+    ("cities", "city", "countries", "country"),
+    ("apples", "apple", "oranges", "orange"),
+    ("houses", "house", "rooms", "room"),
+
+    # Verb progressive/continuous (ing)
+    ("running", "run", "swim", "swimming"),
+    ("eating", "eat", "drink", "drinking"),
+    ("writing", "write", "reading", "reading"),
+    ("driving", "drive", "riding", "riding"),
+    ("singing", "sing", "dancing", "dancing"),
+    ("sleeping", "sleep", "working", "working"),
+    ("cooking", "cook", "baking", "baking"),
+    ("walking", "walk", "jogging", "jog"),
+    ("playing", "play", "studying", "study"),
+    ("flying", "fly", "swimming", "swim"),
+
+    # Comparative (-er)
+    ("bigger", "big", "small", "smaller"),
+    ("faster", "fast", "slow", "slower"),
+    ("stronger", "strong", "weak", "weaker"),
+    ("longer", "long", "short", "shorter"),
+    ("higher", "high", "low", "lower"),
+    ("younger", "young", "old", "older"),
+    ("richer", "rich", "poor", "poorer"),
+    ("brighter", "bright", "dark", "darker"),
+    ("happier", "happy", "sad", "sadder"),
+    ("nearer", "near", "far", "farther"),
+
+    # Past tense
+    ("ate", "eat", "go", "went"),
+    ("ran", "run", "swim", "swam"),
+    ("took", "take", "give", "gave"),
+    ("wrote", "write", "think", "thought"),
+    ("sat", "sit", "stand", "stood"),
+
+    # Countries → capitals (capital - country + other_country = other_capital)
     ("paris", "france", "italy", "rome"),
-    ("rome", "italy", "france", "paris"),
-    ("walking", "walk", "run", "running"),
-    ("big", "bigger", "small", "smaller"),
-    ("good", "better", "bad", "worse"),
-    ("car", "cars", "dog", "dogs"),
-    ("eat", "eating", "swim", "swimming"),
-    ("long", "longer", "short", "shorter"),
+    ("berlin", "germany", "spain", "madrid"),
+    ("moscow", "russia", "japan", "tokyo"),
+    ("ottawa", "canada", "brazil", "brasilia"),
+    ("lisbon", "portugal", "ireland", "dublin"),
+
+    # Part → whole relations
+    ("hand", "finger", "toe", "foot"),
+    ("crown", "king", "soldier", "helmet"),
+    ("seed", "plant", "bird", "egg"),
+
+    # Time relations / seasons
+    ("morning", "dawn", "dusk", "evening"),
+
+    # Semantic analogies
+    ("teacher", "school", "hospital", "doctor"),
+
 ]
 
 def train(mode="cbow", n_epoch=10, lr=0.015):
@@ -45,9 +108,7 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
         examples=analogy_examples,
         embedding_dim=320,
         mode=mode,
-        n_steps=n_epoch*len(data_module.train_dataloader()),
         lr=lr,
-
     )
 
     if torch.cuda.is_available():
@@ -58,13 +119,15 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
         accelerator = "cpu"
 
     trainer = pl.Trainer(
-        max_steps=n_epoch*len(data_module.train_dataloader()),
-        enable_checkpointing=False,
-        logger=WandbLogger(project="edu", name=f"w2v {mode} less noise"),
+        max_steps=n_epoch*10000,
+        limit_train_batches=10000,
+        limit_val_batches=1000,
+        enable_checkpointing=True,
+        logger=WandbLogger(project="edu", name=f"w2v {mode}"),
         # gradient_clip_val=1.0,
         callbacks=[LearningRateMonitor(logging_interval='step')],
         accelerator=accelerator,
-        val_check_interval=10000,
+        # val_check_interval=10000,
         # detect_anomaly=True
         # fast_dev_run=True
     )
@@ -78,5 +141,5 @@ def train(mode="cbow", n_epoch=10, lr=0.015):
 
 if __name__ == "__main__":
 
-    train(mode="skipgram", n_epoch=1)
-    # train(mode="cbow", n_epoch=200)
+    # train(mode="skipgram", n_epoch=20, lr=0.01)
+    train(mode="cbow", n_epoch=20, lr=0.01)

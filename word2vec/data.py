@@ -352,7 +352,7 @@ class Word2VecDataModule(pl.LightningDataModule):
 def debug():
     from datasets import load_dataset
     dataset = load_dataset("wikitext", "wikitext-103-raw-v1")
-    train_text = dataset["train"]["text"][:1000]  # Use smaller subset for testing
+    train_text = dataset["train"]["text"]
 
     data_module = Word2VecDataModule(
         raw_text=train_text,

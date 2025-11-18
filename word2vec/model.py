@@ -81,9 +81,9 @@ class Word2VecRunner(pl.LightningModule):
         sched = torch.optim.lr_scheduler.OneCycleLR(
             optim,
             max_lr=self.hparams.lr,
-            total_steps=self.hparams.n_steps,
-            pct_start=0.05,
-            final_div_factor=1e2
+            total_steps=self.trainer.max_steps,
+            pct_start=0.01,
+            final_div_factor=10
         )
         return {
             "optimizer": optim,
